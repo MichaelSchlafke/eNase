@@ -88,13 +88,10 @@ void setup() {
   pinMode(4, INPUT);  //In R_0
   pinMode(3, INPUT_PULLUP);  //In R_ref
   pinMode(2, INPUT);  //In R_Sensor
-  //Überprüfung TTD Pins
-  pinMode(A1, INPUT);  //detektiert Spannung am Kondensator
 
-  pinMode(A2, INPUT);
-  pinMode(A3, INPUT);
-  pinMode(A1, INPUT);
-  pinMode(A0, INPUT);
+  //Pins Temperaturregelung
+  pinMode(A4, OUTPUT); //Regelt die Stromstärke
+  pinMode(A2, INPUT); //Ausgang Differenzverstärker (Spannung am Heizwiderstand)
 
   //startet TTD
   load_cap();
@@ -103,7 +100,7 @@ void setup() {
 //Widerstandswerte TTD in Ohm
 double R_s = -1;  // noch unbekannt
 double R_0 = 10000;
-double R_ref = 33000;
+double R_ref = 100000;
 
 //Zeitwerte
 volatile double T_0 = 0;
@@ -147,6 +144,8 @@ void U_s_low() {
     int now = millis();
     T_sensor = now - time_last_charge;
     Serial.println("T_sensor ="+String(T_sensor)+"ms");
+    calc_R_s();
+    log_R_s();
     state = 0;
     load_cap();
   }
@@ -155,25 +154,32 @@ void U_s_low() {
 void load_cap() {
   pinMode(5, OUTPUT);  //Quelle TTD
   digitalWrite(5, HIGH); //ladestrom an
+  Serial.println("warte auf geladenen Kondensator...");
+  delay(2000);
+  /*
   double u_c = 1.5;
   while (u_c <= 3.2){
     u_c = double(analogRead(A1)) / 4095. * 3.3;
     Serial.println("u_0 = " + String(u_c) + "V");
   }
+  */
   pinMode(5, INPUT);  //Quelle TTD high impedance
   time_last_charge = millis();
-  Serial.println("Kondensator mit u_0 = " + String(u_c) + "V am Zeitpunkt " + String(time_last_charge) + "ms geladen!");
+  //Serial.println("Kondensator mit u_0 = " + String(u_c) + "V am Zeitpunkt " + String(time_last_charge) + "ms geladen!");
   switch(state) {
     case 0:
-      pinMode(4, INPUT_PULLUP);  //In R_0 low impedance
+      pinMode(4, OUTPUT);  //In R_0 low impedance
+      digitalWrite(4, LOW);
       Serial.println("Messung von T_0 am Zeitpunkt " + String(time_last_charge) + "ms gestartet!");
       break;
     case 1:
-      pinMode(3, INPUT_PULLUP);  //In R_ref low impedance
+      pinMode(3, OUTPUT);  //In R_ref low impedance
+      digitalWrite(3, LOW);
       Serial.println("Messung von T_ref am Zeitpunkt " + String(time_last_charge) + "ms gestartet!");
       break;
     case 2:
-      pinMode(2, INPUT_PULLUP);  //In R_s low impedance
+      pinMode(2, OUTPUT);  //In R_s low impedance
+      digitalWrite(2, LOW);
       Serial.println("Messung von T_s am Zeitpunkt " + String(time_last_charge) + "ms gestartet!");
       break;
     default:
@@ -186,6 +192,7 @@ void load_cap() {
 double calc_R_s() {
   //Berechnung R_sensor
   R_s = (T_sensor - T_0) / (T_ref - T_0) * R_ref;
+  Serial.println("R_sensor von " + String(R_s) + "Ohm gemessen");
   return R_s;
 }
 
@@ -222,42 +229,49 @@ String times = "";
 
 void loop() {
 
-  switch(state) {
-    case 0:
-      //Serial.println("pin_0:" + String(digitalRead(4)));
-      if (digitalRead(4) == LOW){
+  //Schleife TTD
+  if (digitalRead(5) == LOW) {
+    switch(state) {
+      case 0:
+        //Serial.println("pin_0:" + String(digitalRead(4)));
         U_0_low();
         Serial.println("U_0_low triggerd");
-      }
-      break;
-    case 1:
-      //Serial.println("pin_ref:" + String(digitalRead(3)));
-      if (digitalRead(3) == LOW){
+        break;
+      case 1:
+        //Serial.println("pin_ref:" + String(digitalRead(3)));
         U_ref_low();
         Serial.println("U_ref_low triggerd");
-      }
-      break;
-    case 2:
-      //Serial.println("pin_s:" + String(digitalRead(2)));
-      if (digitalRead(2) == LOW){
+        break;
+      case 2:
+        //Serial.println("pin_s:" + String(digitalRead(2)));
         U_s_low();
         Serial.println("U_s_low triggerd");
-      }
-      break;
-    default:
-      Serial.println("ERROR state invalid!");
-      break;
+        break;
+      default:
+        Serial.println("ERROR state invalid!");
+        break;
+    }
   }
 
-  Serial.println("A0 = "+String(double(analogRead(A0)) / 4095 * 3.3)+"V, ");
+  //Testsignal Stromquelle
+  double U_h = analogRead(A2) / 4095 * 3.3;
+  Serial.println("U_h = " + String(U_h) + "V");
+  int quelle = millis() /100 % 255;
+  analogWrite(A4, quelle);
+  Serial.println("Output = " + String(double(quelle)/255.*100.) + "%");
+
+  //Serial.println("A0 = "+String(double(analogRead(A0)) / 4095 * 3.3)+"V, ");
   //Serial.print("A2 = "+String(double(analogRead(A2)) / 4095 * 3.3)+"V, ");
   //Serial.println("A3 = "+String(double(analogRead(A3)) / 4095 * 3.3)+"V");
 
+
+  /*
   if (millis()%10000 == 0) {
     Serial.println("Es lebt! State = " + String(state) );
   }
+  */
 
-  int sensor = analogRead(1);
+  //int sensor = analogRead(1);
   
   /*
   if(digitalRead(4) == HIGH) {
